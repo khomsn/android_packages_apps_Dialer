@@ -42,8 +42,15 @@ import com.android.dialer.R;
 
 public class CallRecorderService extends Service {
     private static final String TAG = "CallRecorderService";
-    private static final boolean DBG = false;
+    private static final boolean DBG = true;
+        
+    private static final String PREF_NAME = "CRS_Preferences";
+    private static final String KEY_CRS_STATE = "call_recorder_service_created";
+    private static final String KEY_CRS_READY = "CRS_ready_for_record";
 
+    private SharedPreferences sp;
+    private SharedPreferences.Editor editor;
+    
     private static enum RecorderState {
         IDLE,
         RECORDING
@@ -52,8 +59,6 @@ public class CallRecorderService extends Service {
     private MediaRecorder mMediaRecorder = null;
     private RecorderState mState = RecorderState.IDLE;
     private CallRecording mCurrentRecording = null;
-
-    private static final String AUDIO_SOURCE_PROPERTY = "persist.call_recording.src";
 
     private SimpleDateFormat DATE_FORMAT = new SimpleDateFormat("yyMMdd_HHmmssSSS");
 
@@ -91,6 +96,18 @@ public class CallRecorderService extends Service {
     @Override
     public void onCreate() {
         if (DBG) Log.d(TAG, "Creating CallRecorderService");
+        /*** Set value to inform other process that
+        * CallRecorderService is already created and ready for recording.
+        ***/
+        // Get SharedPreferences
+        sp = getSharedPreferences(PREF_NAME, Context.MODE_MULTI_PROCESS);
+        // Save SharedPreferences
+        editor = sp.edit();
+        editor.putBoolean(KEY_CRS_STATE, true);
+        editor.putBoolean(KEY_CRS_READY, false);
+        editor.commit();
+       
+        boolean mCRScreated = sp.getBoolean(KEY_CRS_STATE, true); 
     }
 
     @Override
@@ -98,29 +115,8 @@ public class CallRecorderService extends Service {
         return mBinder;
     }
 
-    private int getAudioSource() {
-        int defaultValue = getResources().getInteger(R.integer.call_recording_audio_source);
-        return SystemProperties.getInt(AUDIO_SOURCE_PROPERTY, defaultValue);
-    }
-
-    private int getAudioFormatChoice() {
-        // This replicates PreferenceManager.getDefaultSharedPreferences, except
-        // that we need multi process preferences, as the pref is written in a separate
-        // process (com.android.dialer vs. com.android.incallui)
-        final String prefName = getPackageName() + "_preferences";
-        final SharedPreferences prefs = getSharedPreferences(prefName, MODE_MULTI_PROCESS);
-
-        try {
-            String value = prefs.getString(getString(R.string.call_recording_format_key), null);
-            if (value != null) {
-                return Integer.parseInt(value);
-            }
-        } catch (NumberFormatException e) {
-            // ignore and fall through
-        }
-        return 0;
-    }
-
+    private static int[] mSampleRates = new int[] { 16000, 8000 };
+    
     private synchronized boolean startRecordingInternal(File file) {
         if (mMediaRecorder != null) {
             if (DBG) {
@@ -141,48 +137,46 @@ public class CallRecorderService extends Service {
         }
 
         if (DBG) Log.d(TAG, "Starting recording");
+        
+        // Get SharedPreferences
+        sp = getSharedPreferences(PREF_NAME, Context.MODE_MULTI_PROCESS);
+       
+        boolean mCRScreated = sp.getBoolean(KEY_CRS_STATE, true);
 
         mMediaRecorder = new MediaRecorder();
-        try {
-            int audioSource = getAudioSource();
-            int formatChoice = getAudioFormatChoice();
-            if (DBG) Log.d(TAG, "Creating media recorder with audio source " + audioSource);
-            mMediaRecorder.setAudioSource(audioSource);
-            mMediaRecorder.setOutputFormat(formatChoice == 0
-                    ? MediaRecorder.OutputFormat.AMR_WB : MediaRecorder.OutputFormat.MPEG_4);
-            mMediaRecorder.setAudioEncoder(formatChoice == 0
-                    ? MediaRecorder.AudioEncoder.AMR_WB : MediaRecorder.AudioEncoder.AAC);
-        } catch (IllegalStateException e) {
-            Log.w(TAG, "Error initializing media recorder", e);
-            return false;
-        }
+        for (short audioSource : new short[] { MediaRecorder.AudioSource.VOICE_CALL, MediaRecorder.AudioSource.MIC }){
+            for (short audioFormat : new short[] { MediaRecorder.OutputFormat.AMR_WB, MediaRecorder.OutputFormat.AMR_NB }) {
+                for (short audioEncoder : new short[] {MediaRecorder.AudioEncoder.AMR_WB, MediaRecorder.AudioEncoder.AMR_NB}) {
+                   for (int rate : mSampleRates) {
+                        for (int channelConfig : new int[] { 2 , 1 }){
+                            try {
+                                     if (DBG) Log.d(TAG, "Creating media recorder with audio source " + audioSource + " format " + audioFormat + " encoding " + audioEncoder + " sampling rate " + rate);
+                                    mMediaRecorder.setAudioSource(audioSource);
+                                    mMediaRecorder.setOutputFormat(audioFormat);
+                                    mMediaRecorder.setAudioEncoder(audioEncoder);
+                                    mMediaRecorder.setAudioSamplingRate(rate);
+                                    mMediaRecorder.setAudioChannels(channelConfig);
 
-        file.getParentFile().mkdirs();
-        String outputPath = file.getAbsolutePath();
-        if (DBG) Log.d(TAG, "Writing output to file " + outputPath);
+                            file.getParentFile().mkdirs();
+                            String outputPath = file.getAbsolutePath();
+                            if (DBG) Log.d(TAG, "Writing output to file " + outputPath);
+                            
+                            mMediaRecorder.setOutputFile(outputPath);
+                            mMediaRecorder.prepare();
 
-        try {
-            mMediaRecorder.setOutputFile(outputPath);
-            mMediaRecorder.prepare();
-            mMediaRecorder.start();
-            mState = RecorderState.RECORDING;
-            return true;
-        } catch (IOException e) {
-            Log.w(TAG, "Could not start recording for file " + outputPath, e);
-            Log.w(TAG, "Deleting failed recording " + outputPath);
-            file.delete();
-        } catch (IllegalStateException e) {
-            Log.w(TAG, "Could not start recording for file " + outputPath, e);
-            Log.w(TAG, "Deleting failed recording " + outputPath);
-            file.delete();
-        } catch (RuntimeException e) {
-            // only catch exceptions thrown by the MediaRecorder JNI code
-            if (e.getMessage().indexOf("start failed") >= 0) {
-                Log.w(TAG, "Could not start recording for file " + outputPath, e);
-                Log.w(TAG, "Deleting failed recording " + outputPath);
-                file.delete();
-            } else {
-                throw e;
+                            mMediaRecorder.start();
+                            mState = RecorderState.RECORDING;
+                            return true;
+
+
+                            } catch (Exception e) {
+                                mMediaRecorder.reset();
+                                Log.e(TAG, "Exception, keep trying.",e);
+                                file.delete();
+                            }
+                        }
+                    }
+                }
             }
         }
 
@@ -217,6 +211,18 @@ public class CallRecorderService extends Service {
     public void onDestroy() {
         super.onDestroy();
         if (DBG) Log.d(TAG, "Destroying CallRecorderService");
+        /*** Set value to inform other process that
+        * CallRecorderService is already destroy and not aviable for recording.
+        ***/
+        // Get SharedPreferences
+        sp = getSharedPreferences(PREF_NAME, Context.MODE_MULTI_PROCESS);
+        // Save SharedPreferences
+        editor = sp.edit();
+        editor.putBoolean(KEY_CRS_STATE, false);
+        editor.putBoolean(KEY_CRS_READY, false);
+        editor.commit();
+       
+        boolean mCRScreated = sp.getBoolean(KEY_CRS_STATE, false); 
     }
 
     private synchronized RecorderState getState() {
@@ -230,12 +236,15 @@ public class CallRecorderService extends Service {
             number = "unknown";
         }
 
-        int formatChoice = getAudioFormatChoice();
-        String extension = formatChoice == 0 ? ".amr" : ".m4a";
+        String extension = ".amr"; /*".m4a";*/
         return number + "_" + timestamp + extension;
     }
 
     public static boolean isEnabled(Context context) {
-        return context.getResources().getBoolean(R.bool.call_recording_enabled);
+        return CallRecorderSettings.isCallRecorderEnabled(context);
+    }
+    
+    public static boolean isAutoRecordEnabled(Context context) {
+        return CallRecorderSettings.isAutoCallRecorderEnabled(context);
     }
 }

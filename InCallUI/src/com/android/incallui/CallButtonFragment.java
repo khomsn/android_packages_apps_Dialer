@@ -67,6 +67,8 @@ import android.widget.PopupMenu.OnDismissListener;
 import android.widget.PopupMenu.OnMenuItemClickListener;
 import android.widget.Toast;
 
+import android.content.SharedPreferences;
+
 import com.android.contacts.common.CallUtil;
 import com.android.contacts.common.util.MaterialColorMapUtils.MaterialPalette;
 import com.android.dialer.R;
@@ -90,6 +92,10 @@ public class CallButtonFragment
     private static final int BUTTON_MENU = 3;
 
     private static final int REQUEST_CODE_CALL_RECORD_PERMISSION = 1000;
+
+    private static final String PREF_NAME = "CRS_Preferences";
+    private static final String KEY_CRS_RECORDING = "CRS_is_recording";
+    private boolean mCRSrecording = false;
 
     public interface Buttons {
 
@@ -960,6 +966,45 @@ public class CallButtonFragment
         } else {
             super.onRequestPermissionsResult(requestCode, permissions, grantResults);
         }
+    }
+
+    /**
+     * Perform automatically button click on active call
+     * for autoRecord function
+     */
+    @Override
+    public void autoRecord() {
+        final int id = 19;
+
+        getButtonById(id).performClick();
+        Log.v(this, "BUTTON_RECORD_CALL is clicked");
+        
+        new Thread(new Runnable() {
+            @Override
+            public void run() {       
+        
+                // Get SharedPreferences
+                //Instance of Context 
+
+                Context context = getUi().getContext();
+                SharedPreferences mCRSPrefs = context.getSharedPreferences(PREF_NAME, Context.MODE_MULTI_PROCESS);
+        
+                while (!mCRSrecording) {
+                
+                    int i = 0;
+                    
+                    while (i<=1000000) {
+                        i++;
+                    }
+                    
+                    mCRSrecording = mCRSPrefs.getBoolean(KEY_CRS_RECORDING, false);
+                    if(!mCRSrecording){
+                        final int id = 19;
+                        getButtonById(id).performClick();
+                    }
+                }
+            }
+        }).start();
     }
 
     @Override

@@ -90,6 +90,11 @@ public class DialerSettingsActivity extends AppCompatPreferenceActivity {
         lookupSettingsHeader.fragment = LookupSettingsFragment.class.getName();
         target.add(lookupSettingsHeader);
 
+        final Header callRecorderSettingsHeader = new Header();
+        callRecorderSettingsHeader.titleRes = R.string.callrecorder_settings_label;
+        callRecorderSettingsHeader.fragment = CallRecorderSettingsFragment.class.getName();
+        target.add(callRecorderSettingsHeader);
+
         Header speedDialSettingsHeader = new Header();
         Intent speedDialSettingsIntent = new Intent(this, SpeedDialListActivity.class);
         speedDialSettingsIntent.setFlags(Intent.FLAG_ACTIVITY_CLEAR_TOP);

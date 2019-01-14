@@ -81,6 +81,16 @@ public class CallButtonPresenter extends Presenter<CallButtonPresenter.CallButto
     private static final int MAX_PARTICIPANTS_LIMIT = 6;
     private boolean mEnhanceEnable = false;
 
+    private boolean mAutomaticallyRecorded = false;
+    private boolean mCRStoCheckLoop = false;
+    private boolean mCRScreated = false;
+    
+    private static final String PREF_NAME = "CRS_Preferences";
+    private static final String KEY_CRS_STATE = "call_recorder_service_created";
+    private static final String KEY_CRS_READY = "CRS_ready_for_record";
+
+    private SharedPreferences.Editor editor;
+
     // NOTE: Capability constant definition has been duplicated to avoid bundling
     // the Dialer with Frameworks.
     private static final int CAPABILITY_ADD_PARTICIPANT = 0x02000000;
@@ -536,6 +546,59 @@ public class CallButtonPresenter extends Presenter<CallButtonPresenter.CallButto
         updateButtonsState(call);
     }
 
+    /*** Check if CallRecorderSevice is ready for recording
+    ** on this current call.
+    ***/
+    private void isAutoRecordCallReady(Call call){
+            //has come here so 'mCRStoCheckLoop = true' now
+            mCRStoCheckLoop = true;
+            int i = 0;
+            // Get SharedPreferences
+            //Instance of Context 
+
+            Context context = getUi().getContext();
+            SharedPreferences mCRSPrefs = context.getSharedPreferences(PREF_NAME, Context.MODE_MULTI_PROCESS);
+            /*** check for CallRecorderSevice is created if true go to record****/
+            while (!mCRScreated && i <= 10) {
+           
+                mCRScreated = mCRSPrefs.getBoolean(KEY_CRS_STATE, false);
+                i++;
+
+            }
+
+            if(mCRScreated){
+                editor = mCRSPrefs.edit();
+                editor.putBoolean(KEY_CRS_READY, true);
+                editor.commit();
+                
+                startAutoRecordCall(call);
+                /**both works**/
+                /**
+                mCRSPrefs.edit()
+                        .putBoolean(KEY_CRS_READY, true)
+                        .apply();
+                **/
+            } else {
+                mCRStoCheckLoop = false;
+            }
+    }
+
+    /*** Start click auto record
+    ** on this current call.
+    ***/
+    private void startAutoRecordCall(Call call){
+        if(!mAutomaticallyRecorded){
+       
+            CallButtonUi ui = getUi();
+            
+            Log.v(this, "Automatically call Record for call: ", call);
+            
+            mAutomaticallyRecorded = true;
+            
+            ui.autoRecord();
+        }
+    }
+
     /**
      * Checks if audio route is supported on device
      *
@@ -640,6 +703,7 @@ public class CallButtonPresenter extends Presenter<CallButtonPresenter.CallButto
         final CallRecorder recorder = CallRecorder.getInstance();
         boolean showCallRecordOption = recorder.isEnabled()
                 && !isVideo && call.getState() == Call.State.ACTIVE;
+        boolean isAutoRecordEnable = recorder.isAutoRecordEnabled();
 
         ui.showButton(BUTTON_AUDIO, shouldAudioButtonShow());
         ui.showButton(BUTTON_SWAP, showSwap);
@@ -683,6 +747,18 @@ public class CallButtonPresenter extends Presenter<CallButtonPresenter.CallButto
 
         ui.updateButtonStates();
         ui.updateColors();
+/**************autoRecord Part*****************/
+
+        /** Check loop for Autorecord call environment is ready then click record **/
+        /** come here only one time per call                                      **/
+        /***************************************************************************/
+        if(showCallRecordOption && isAutoRecordEnable){
+            if( !mCRStoCheckLoop ) {
+                isAutoRecordCallReady(call);
+            }
+        }
+
+/************************/
     }
 
     private boolean hasVideoCallCapabilities(Call call) {
@@ -755,6 +831,7 @@ public class CallButtonPresenter extends Presenter<CallButtonPresenter.CallButto
         void updateButtonStates();
         Context getContext();
         public void updateColors();
+        public void autoRecord();
     }
 
     @Override

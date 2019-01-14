@@ -37,7 +37,6 @@ import com.android.contacts.common.compat.SdkVersionOverride;
 import com.android.dialer.R;
 import com.android.dialer.compat.SettingsCompat;
 import com.android.phone.common.util.SettingsUtil;
-import com.android.services.callrecorder.CallRecorderService;
 
 public class SoundSettingsFragment extends PreferenceFragment
         implements Preference.OnPreferenceChangeListener {
@@ -129,10 +128,6 @@ public class SoundSettingsFragment extends PreferenceFragment
             mDtmfToneLength = null;
         }
 
-        if (!CallRecorderService.isEnabled(getActivity())) {
-            getPreferenceScreen().removePreference(
-                    findPreference(context.getString(R.string.call_recording_category_key)));
-        }
     }
 
     @Override

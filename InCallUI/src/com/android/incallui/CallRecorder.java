@@ -29,6 +29,8 @@ import android.text.TextUtils;
 import android.util.Log;
 import android.widget.Toast;
 
+import android.content.SharedPreferences;
+
 import com.android.services.callrecorder.CallRecorderService;
 import com.android.services.callrecorder.CallRecordingDataStore;
 import com.android.services.callrecorder.common.CallRecording;
@@ -45,6 +47,12 @@ import java.util.HashSet;
  */
 public class CallRecorder implements CallList.Listener {
     public static final String TAG = "CallRecorder";
+
+    private static final String PREF_NAME = "CRS_Preferences";
+
+    private static final String KEY_CRS_RECORDING = "CRS_is_recording";
+
+    private SharedPreferences.Editor editor;
 
     public static final String[] REQUIRED_PERMISSIONS = new String[] {
         android.Manifest.permission.RECORD_AUDIO,
@@ -84,6 +92,10 @@ public class CallRecorder implements CallList.Listener {
         return CallRecorderService.isEnabled(mContext);
     }
 
+    public boolean isAutoRecordEnabled() {
+        return CallRecorderService.isAutoRecordEnabled(mContext);
+    }
+
     private CallRecorder() {
         CallList.getInstance().addListener(this);
     }
@@ -118,6 +130,13 @@ public class CallRecorder implements CallList.Listener {
                     l.onStartRecording();
                 }
                 mUpdateRecordingProgressTask.run();
+                
+                // Get SharedPreferences
+                SharedPreferences mCRSPrefs = mContext.getSharedPreferences(PREF_NAME, Context.MODE_MULTI_PROCESS);
+                editor = mCRSPrefs.edit();
+                editor.putBoolean(KEY_CRS_RECORDING, true);
+                editor.commit();
+                
                 return true;
             } else {
                 Toast.makeText(mContext, R.string.call_recording_failed_message,
@@ -170,6 +189,13 @@ public class CallRecorder implements CallList.Listener {
                                 dataStore.open(mContext);
                                 dataStore.putRecording(recording);
                                 dataStore.close();
+                                
+                            // Get SharedPreferences
+                            SharedPreferences mCRSPrefs = mContext.getSharedPreferences(PREF_NAME, Context.MODE_MULTI_PROCESS);
+                            editor = mCRSPrefs.edit();
+                            editor.putBoolean(KEY_CRS_RECORDING, false);
+                            editor.commit();
+                               
                             }
                         }).start();
                     } else {
